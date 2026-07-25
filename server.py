@@ -45,8 +45,8 @@ async def get_browser(user_id: str):
     if user_id not in browsers:
         browser = await launch_async(
             headless=True,
-            geoip=False,
-            humanize=False,
+            geoip=True,
+            humanize=True,
             args=[
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -142,7 +142,9 @@ async def create_tab(tab: TabCreate):
         
         return {"tabId": tab_id, "url": tab.url}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)[:500]}")
 
 
 @app.get("/tabs/{tab_id}/snapshot")
