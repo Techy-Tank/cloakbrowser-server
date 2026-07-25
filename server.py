@@ -98,28 +98,24 @@ async def create_tab(tab: TabCreate):
         except Exception:
             pass
 
-        # Wait briefly for Turnstile to solve (max 12s)
-        for i in range(4):
+        # Wait for Turnstile to solve (always reload regardless)
+        for i in range(10):
             await page.wait_for_timeout(3000)
-            has_root = await page.evaluate("() => (document.getElementById('root')?.innerHTML?.length || 0) > 200")
-            if has_root:
-                break
 
         # Reload with Turnstile cookie to load actual content + assets
-        await page.goto(tab.url, wait_until="networkidle", timeout=30000)
-
-        # Wait for React SPA to hydrate
         try:
-            await page.wait_for_function(
-                """() => {
-                    const root = document.getElementById('root');
-                    return root && root.children.length > 0;
-                }""",
-                timeout=15000,
-            )
-            await page.wait_for_timeout(2000)
+            await page.goto(tab.url, wait_until="networkidle", timeout=30000)
         except Exception:
             pass
+
+        # Wait for React SPA to hydrate
+        for i in range(5):
+            root_len = await page.evaluate("() => (document.getElementById('root')?.innerHTML?.length || 0)")
+            if root_len > 500:
+                break
+            await page.wait_for_timeout(3000)
+        
+        await page.wait_for_timeout(2000)
         
         # Close sign-in modal if present
         try:
