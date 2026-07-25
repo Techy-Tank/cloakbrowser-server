@@ -4,7 +4,6 @@ CloakBrowser API Server - Stealth browser for bot detection bypass
 
 import asyncio
 import base64
-import json
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -12,8 +11,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-# CloakBrowser imports
-from cloakbrowser import AsyncCloakBrowser
+from cloakbrowser import launch_async
 
 
 class TabCreate(BaseModel):
@@ -39,15 +37,13 @@ class TypeAction(BaseModel):
 
 
 # Global state
-browsers: dict = {}  # userId -> browser
-pages: dict = {}     # tabId -> { page, userId, url }
+browsers: dict = {}
+pages: dict = {}
 
 
 async def get_browser(user_id: str):
-    """Get or create a browser for a user"""
     if user_id not in browsers:
-        cb = AsyncCloakBrowser()
-        browser = await cb.launch(
+        browser = await launch_async(
             headless=True,
             args=[
                 '--no-sandbox',
@@ -64,7 +60,6 @@ async def get_browser(user_id: str):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
-    # Cleanup
     for browser in browsers.values():
         try:
             await browser.close()
@@ -90,8 +85,7 @@ async def create_tab(tab: TabCreate):
     try:
         browser = await get_browser(tab.userId)
         context = await browser.new_context(
-            viewport={"width": 1920, "height": 1080},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            viewport={"width": 1920, "height": 1080}
         )
         page = await context.new_page()
         
@@ -120,8 +114,6 @@ async def get_snapshot(tab_id: str, userId: str):
         title = await page.title()
         content = await page.content()
         url = page.url
-        
-        # Get text content
         text_content = await page.evaluate("() => document.body.innerText")
         
         return {
