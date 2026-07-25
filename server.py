@@ -45,8 +45,8 @@ async def get_browser(user_id: str):
     if user_id not in browsers:
         browser = await launch_async(
             headless=True,
-            geoip=True,
-            humanize=True,
+            geoip=False,
+            humanize=False,
             args=[
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -94,19 +94,19 @@ async def create_tab(tab: TabCreate):
 
         # First load: solve Cloudflare Turnstile challenge
         try:
-            await page.goto(tab.url, wait_until="domcontentloaded", timeout=30000)
+            await page.goto(tab.url, wait_until="domcontentloaded", timeout=20000)
         except Exception:
             pass
 
-        # Wait for Turnstile to solve
-        for i in range(10):
+        # Wait briefly for Turnstile to solve (max 12s)
+        for i in range(4):
             await page.wait_for_timeout(3000)
             has_root = await page.evaluate("() => (document.getElementById('root')?.innerHTML?.length || 0) > 200")
             if has_root:
                 break
 
         # Reload with Turnstile cookie to load actual content + assets
-        await page.goto(tab.url, wait_until="networkidle", timeout=60000)
+        await page.goto(tab.url, wait_until="networkidle", timeout=30000)
 
         # Wait for React SPA to hydrate
         try:
@@ -115,9 +115,9 @@ async def create_tab(tab: TabCreate):
                     const root = document.getElementById('root');
                     return root && root.children.length > 0;
                 }""",
-                timeout=20000,
+                timeout=15000,
             )
-            await page.wait_for_timeout(3000)
+            await page.wait_for_timeout(2000)
         except Exception:
             pass
         
