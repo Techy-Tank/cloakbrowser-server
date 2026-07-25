@@ -32,7 +32,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install CloakBrowser Chromium binary
-RUN cloaked install
+RUN cloakbrowser install
 
 COPY server.py .
 
