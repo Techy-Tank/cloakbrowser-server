@@ -45,12 +45,12 @@ async def get_browser(user_id: str):
     if user_id not in browsers:
         browser = await launch_async(
             headless=True,
+            geoip=True,
+            humanize=True,
             args=[
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--single-process',
             ]
         )
         browsers[user_id] = browser
@@ -85,12 +85,53 @@ async def create_tab(tab: TabCreate):
     try:
         browser = await get_browser(tab.userId)
         context = await browser.new_context(
-            viewport={"width": 1920, "height": 1080}
+            viewport={"width": 1920, "height": 1080},
+            device_scale_factor=1,
         )
         page = await context.new_page()
         
         tab_id = str(uuid.uuid4())
-        await page.goto(tab.url, wait_until="domcontentloaded", timeout=30000)
+
+        # First load: solve Cloudflare Turnstile challenge
+        try:
+            await page.goto(tab.url, wait_until="domcontentloaded", timeout=30000)
+        except Exception:
+            pass
+
+        # Wait for Turnstile to solve
+        for i in range(10):
+            await page.wait_for_timeout(3000)
+            has_root = await page.evaluate("() => (document.getElementById('root')?.innerHTML?.length || 0) > 200")
+            if has_root:
+                break
+
+        # Reload with Turnstile cookie to load actual content + assets
+        await page.goto(tab.url, wait_until="networkidle", timeout=60000)
+
+        # Wait for React SPA to hydrate
+        try:
+            await page.wait_for_function(
+                """() => {
+                    const root = document.getElementById('root');
+                    return root && root.children.length > 0;
+                }""",
+                timeout=20000,
+            )
+            await page.wait_for_timeout(3000)
+        except Exception:
+            pass
+        
+        # Close sign-in modal if present
+        try:
+            close_btn = page.locator('button[aria-label="Close"], [data-testid="close-button"]')
+            if await close_btn.count() > 0:
+                await close_btn.first.click()
+                await page.wait_for_timeout(1000)
+            else:
+                await page.mouse.click(10, 10)
+                await page.wait_for_timeout(500)
+        except Exception:
+            pass
         
         pages[tab_id] = {
             "page": page,
@@ -134,7 +175,12 @@ async def get_screenshot(tab_id: str, userId: str):
     
     try:
         page = pages[tab_id]["page"]
-        screenshot = await page.screenshot(full_page=False)
+        # Ensure page is still alive and rendered
+        try:
+            await page.wait_for_load_state("networkidle", timeout=5000)
+        except Exception:
+            pass
+        screenshot = await page.screenshot(full_page=True, type="png")
         screenshot_b64 = base64.b64encode(screenshot).decode()
         
         return {"screenshot": screenshot_b64}
